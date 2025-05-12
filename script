@@ -1,0 +1,156 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+        });
+    });
+
+    // Calculate buttons
+    document.getElementById('calculate-btn').addEventListener('click', calculateRates);
+    document.getElementById('calculate-advanced-btn').addEventListener('click', calculateRates);
+
+    // Rate calculation logic
+    function calculateRates() {
+        const resultsContainer = document.getElementById('results-container');
+        try {
+            // Input values
+            const miles = parseFloat(document.getElementById('miles').value) || 0;
+            const weight = parseFloat(document.getElementById('weight').value) || 0;
+            const equipment = document.getElementById('equipment').value;
+            const targetMargin = parseFloat(document.getElementById('target-margin').value) || 15;
+
+            // Advanced inputs (optional)
+            const isAdvanced = document.querySelector('.tab.active').dataset.tab === 'advanced';
+            const marketCondition = document.getElementById('market-condition')?.value || 'normal';
+            const urgency = document.getElementById('urgency')?.value || 'standard';
+            const fuelPrice = parseFloat(document.getElementById('fuel-price')?.value) || 3.95;
+            const season = document.getElementById('season')?.value || 'normal';
+            const destinationType = document.getElementById('destination-type')?.value || 'balanced';
+            const backhaulFriendly = document.getElementById('backhaul-friendly')?.value || 'no';
+            const carrierAvailability = document.getElementById('carrier-availability')?.value || 'normal';
+
+            // Validation
+            if (miles <= 0 || weight <= 0) {
+                alert('Please enter valid miles and weight.');
+                return;
+            }
+
+            // Base rates per mile
+            const baseRates = {
+                van: 2.00,
+                reefer: 2.40,
+                flatbed: 2.30,
+                hotshot: 2.65,
+                specialized: 3.50
+            };
+
+            // Multipliers
+            const marketMultipliers = { tight: 1.15, normal: 1.0, loose: 0.85 };
+            const urgencyMultipliers = { standard: 1.0, expedited: 1.2, critical: 1.4 };
+            const seasonMultipliers = { normal: 1.0, produce: 1.1, holiday: 1.15, winter: 1.05 };
+            const destinationMultipliers = { balanced: 1.0, headhaul: 1.15, backhaul: 0.85 };
+            const backhaulMultipliers = { no: 1.0, somewhat: 0.95, very: 0.90 };
+            const availabilityMultipliers = { normal: 1.0, limited: 1.15, abundant: 0.90 };
+
+            // Calculate base rate
+            let ratePerMile = baseRates[equipment] || 2.00;
+
+            // Apply advanced adjustments
+            if (isAdvanced) {
+                ratePerMile *= marketMultipliers[marketCondition];
+                ratePerMile *= urgencyMultipliers[urgency];
+                ratePerMile *= seasonMultipliers[season];
+                ratePerMile *= destinationMultipliers[destinationType];
+                ratePerMile *= backhaulMultipliers[backhaulFriendly];
+                ratePerMile *= availabilityMultipliers[carrierAvailability];
+
+                // Fuel price adjustment
+                if (fuelPrice > 3.95) {
+                    ratePerMile += (fuelPrice - 3.95) * 0.05;
+                }
+
+                // Weight adjustment
+                if (weight > 35000) ratePerMile += 0.10;
+                else if (weight < 10000) ratePerMile -= 0.05;
+            }
+
+            // Calculate rates
+            const shipperRate = Math.round(miles * ratePerMile);
+            const carrierRate = Math.round(shipperRate * (1 - targetMargin / 100));
+            const marginAmount = shipperRate - carrierRate;
+            const marginPercentage = (marginAmount / shipperRate) * 100;
+            const marketRate = Math.round(miles * baseRates[equipment]);
+            const vsMarket = ((shipperRate / marketRate - 1) * 100);
+
+            // Update UI
+            document.getElementById('shipper-rate').textContent = `$${shipperRate.toLocaleString()}`;
+            document.getElementById('carrier-rate').textContent = `$${carrierRate.toLocaleString()}`;
+            document.getElementById('margin-amount').textContent = `$${marginAmount.toLocaleString()}`;
+            document.getElementById('margin-percentage').textContent = `${marginPercentage.toFixed(1)}%`;
+            document.getElementById('rpm-shipper').textContent = `$${ratePerMile.toFixed(2)}`;
+            document.getElementById('rpm-carrier').textContent = `$${(ratePerMile * (1 - targetMargin / 100)).toFixed(2)}`;
+            document.getElementById('market-rate').textContent = `$${marketRate.toLocaleString()}`;
+            document.getElementById('vs-market').textContent = `${vsMarket > 0 ? '+' : ''}${vsMarket.toFixed(1)}%`;
+            document.getElementById('market-condition-result').textContent = 
+                marketCondition.charAt(0).toUpperCase() + marketCondition.slice(1);
+
+            // Apply margin color coding
+            const marginElement = document.getElementById('margin-amount');
+            marginElement.classList.remove('margin-high', 'margin-medium', 'margin-low');
+            if (marginPercentage > 20) marginElement.classList.add('margin-high');
+            else if (marginPercentage > 10) marginElement.classList.add('margin-medium');
+            else marginElement.classList.add('margin-low');
+
+            // Generate recommendation
+            let recommendation = '';
+            if (vsMarket < -5) {
+                recommendation = 'Your rate is below market. Consider increasing to improve margins.';
+            } else if (vsMarket > 10) {
+                recommendation = 'Your rate is above market. This may reduce competitiveness unless justified by special requirements.';
+            } else {
+                recommendation = 'Your rate is competitive with market conditions.';
+            }
+
+            // Equipment-specific recommendations
+            const equipmentTips = {
+                hotshot: 'Hotshot loads often command premium rates for urgent deliveries.',
+                reefer: 'Ensure rates account for temperature control requirements.',
+                flatbed: 'Consider additional costs for tarping or securement.'
+            };
+            if (equipmentTips[equipment]) {
+                recommendation += ` ${equipmentTips[equipment]}`;
+            }
+
+            // Backhaul recommendations
+            if (isAdvanced) {
+                const backhaulTips = {
+                    very: 'Backhaul-friendly destination supports lower rates due to return load opportunities.',
+                    somewhat: 'Moderate backhaul opportunities may allow slight rate reductions.',
+                    no: 'Limited backhaul options justify higher rates to cover deadhead miles.'
+                };
+                recommendation += ` ${backhaulTips[backhaulFriendly]}`;
+            }
+
+            document.getElementById('recommendation').textContent = recommendation;
+            resultsContainer.style.display = 'block';
+        } catch (error) {
+            console.error('Calculation error:', error);
+            alert('An error occurred during calculation. Please check your inputs.');
+        }
+    }
+
+    // Pre-populate example data
+    document.getElementById('origin').value = 'Monroe, NC';
+    document.getElementById('destination').value = 'Clanton, AL';
+    document.getElementById('miles').value = '445';
+    document.getElementById('weight').value = '8589';
+    document.getElementById('equipment').value = 'van';
+});
